@@ -5,6 +5,8 @@ import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.view.Window;
 import android.view.WindowManager;
+import android.widget.Toast;
+
 import androidx.activity.EdgeToEdge;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.graphics.Insets;
@@ -33,6 +35,10 @@ public class MainActivity extends AppCompatActivity {
 
         GameView gv = new GameView(this);
         setContentView(gv);
+        SharedPreferences prefs = getSharedPreferences("crepe_prefs", MODE_PRIVATE);
+        int total = prefs.getInt("games_played", 0);
+        Toast.makeText(this, "Total de parties : " + total, Toast.LENGTH_SHORT).show();
+
 
 
 
