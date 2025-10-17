@@ -17,14 +17,18 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 
+import android.content.Intent;
+import android.os.CountDownTimer;
+
 public class GameView extends SurfaceView implements SurfaceHolder.Callback {
     private GameThread thread;
 
-    // --- Compteur de parties ---
     private final SharedPreferences prefs;
     private int gamesPlayed;
+    private long timeLeft = 60000;
+    private CountDownTimer timer;
 
-    // --- Gestion des blocs périodiques ---
+
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final List<Rect> blocks = new ArrayList<>();
     private final Random rng = new Random();
@@ -60,6 +64,23 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
         // Nouvelle partie : incrémente et sauvegarde
         gamesPlayed += 1;
         prefs.edit().putInt("games_played", gamesPlayed).apply();
+        timer = new CountDownTimer(60000, 1000) { // tick chaque seconde
+            @Override
+            public void onTick(long millisUntilFinished) {
+                timeLeft = millisUntilFinished;
+            }
+
+            @Override
+            public void onFinish() {
+                timeLeft = 0;
+                // Quand le temps est écoulé → lancer la page Victoire
+                Intent intent = new Intent(getContext(), VictoireActivity.class);
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(intent);
+            }
+        }.start();
+
+
 
         // (Re)crée un thread frais pour éviter IllegalThreadStateException
         thread = new GameThread(getHolder(), this);
@@ -74,6 +95,9 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
 
     @Override
     public void surfaceDestroyed(@NonNull SurfaceHolder holder) {
+        if (timer != null) {
+            timer.cancel();
+        }
         // Stoppe le spawner
         handler.removeCallbacksAndMessages(null);
 
@@ -116,6 +140,12 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
         paint.setColor(Color.BLACK);
         paint.setTextSize(36f);
         canvas.drawText("Parties: " + gamesPlayed, 16, 48, paint);
+
+        // Affiche le timer (en secondes)
+        String timeText = "Temps: " + (timeLeft / 1000) + "s";
+        float textWidth = paint.measureText(timeText);
+        canvas.drawText(timeText, getWidth() - textWidth - 16, 48, paint);
+
     }
 
     public void update() {
