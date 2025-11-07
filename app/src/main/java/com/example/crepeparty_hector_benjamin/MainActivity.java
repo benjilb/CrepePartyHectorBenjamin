@@ -5,9 +5,9 @@ import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.view.Window;
 import android.view.WindowManager;
-import android.widget.Toast;
 
 import androidx.activity.EdgeToEdge;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
@@ -25,6 +25,7 @@ public class MainActivity extends AppCompatActivity {
 
         EdgeToEdge.enable(this);
 
+        // petite démo de SharedPreferences déjà présente chez toi
         SharedPreferences sharedPref = this.getPreferences(Context.MODE_PRIVATE);
         int valeur_y = sharedPref.getInt("valeur_y", 0);
         valeur_y = (valeur_y + 100) % 400;
@@ -32,22 +33,39 @@ public class MainActivity extends AppCompatActivity {
         editor.putInt("valeur_y", valeur_y);
         editor.apply();
 
+        // >>> Utilise maintenant un layout avec GameView + bouton
+        setContentView(R.layout.activity_main);
 
-        GameView gv = new GameView(this);
-        setContentView(gv);
-        SharedPreferences prefs = getSharedPreferences("crepe_prefs", MODE_PRIVATE);
-        int total = prefs.getInt("games_played", 0);
-        //Toast.makeText(this, "Total de parties : " + total, Toast.LENGTH_SHORT).show();
+        GameView gv = findViewById(R.id.gameView);
+        findViewById(R.id.btnSkin).setOnClickListener(v -> openSkinDialog(gv));
 
-
-
-
-
-        ViewCompat.setOnApplyWindowInsetsListener(gv, (v, insets) -> {
+        // Optionnel : insets
+        ViewCompat.setOnApplyWindowInsetsListener(gv, (view, insets) -> {
             Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
-            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
+            view.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
             return insets;
         });
+    }
 
+    /** Ouvre un sélecteur simple de skins et applique sur GameView */
+    private void openSkinDialog(GameView gv) {
+        final int[] SKINS = new int[]{
+                R.drawable.car_01,    // mets tes fichiers PNG dans res/drawable/
+                R.drawable.car_02,
+                R.drawable.car_03,
+                R.drawable.car_04,
+                R.drawable.car_05,
+                R.drawable.car_07,
+                R.drawable.car_08,
+                R.drawable.car_09,
+                R.drawable.car_10
+        };
+        final String[] NAMES = {"Rouge", "Blanche", "Bleue", "Jaune", "Verte",
+                "Cyan", "Rose", "Orange", "Noire"};
+
+        new AlertDialog.Builder(this)
+                .setTitle("Choisir une voiture")
+                .setItems(NAMES, (d, which) -> gv.setSkin(SKINS[which]))
+                .show();
     }
 }
