@@ -22,6 +22,11 @@ import android.view.SurfaceView;
 import androidx.annotation.DrawableRes;
 import androidx.annotation.NonNull;
 
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Random;
+
 public class GameView extends SurfaceView implements SurfaceHolder.Callback, SensorEventListener {
 
     // ---------------- Core & état ----------------
@@ -38,12 +43,14 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
     private volatile float tiltAccelX = 0f;
     private static final float LPF_ALPHA = 0.12f;
 
-    // --- contrôle
-    private static final float DEADZONE   = 0.03f;
-    private static final float MAX_SPEED  = 1200f;
-    private static final float BOOST_GAIN = 220f;
-    private static final float HPF_ALPHA  = 0.85f;
+    // --- contrôle latéral "arcade"
+    private static final float DEADZONE = 0.04f;          // petite zone morte
+    private static final float MAX_LATERAL_SPEED = 1000f; // px/s (vitesse latérale max)
+    private static final float STEER_RESP = 10f;          // réactivité (par seconde)
+    private static final float TILT_SENS = 1.0f;          // sensibilité globale du tilt
+    private static final float STEER_GAMMA = 1.8f;        // courbe non-linéaire (>1 = douceur près du zéro)
 
+    // (gardées si tu veux réutiliser ailleurs)
     private float lastRawAxG = 0f;
     private float jerkG = 0f;
 
@@ -52,8 +59,6 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
     private float dotVx = 0f;
     private float dotY = 0f;
     private final float dotR = 24f;      // utilisé si pas de skin
-    private final float accelGain = 500f;
-    private final float friction  = 0.985f;
     private long lastUpdateNs = 0L;
 
     // --- skin voiture
@@ -63,12 +68,99 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
 
     // ---------------- Map/route qui défile ----------------
     private float trackOffsetY = 0f;        // défilement vertical (px)
-    private float trackSpeed   = 280f;      // vitesse de départ (px/s)
-    private float speedGain    = 20f;       // accélération route (px/s²)
-    private float trackMax     = 800f;      // vitesse max (px/s)
+    private float trackSpeed   = 340f;      // vitesse de départ (px/s)
+    private float speedGain    = 26f;       // accélération route (px/s²)
+    private float trackMax     = 1000f;     // vitesse max (px/s)
     private float roadWidth    = 0f;        // largeur de route (px)
-    private float centerAmp    = 0f;        // amplitude des virages (px)
+    private float centerAmp    = 0f;        // 0 = route droite
     private float laneDash     = 28f;       // taille pointillé central (px)
+
+    // ---------------- Obstacles (carrés rouges) ----------------
+    private static final float OB_SIZE_PCT     = 0.06f;   // ~6% de la largeur écran
+    private static final long  OB_SPAWN_MS     = 1200L;   // spawn moins fréquent
+    private static final float OB_MARGIN_PX    = 24f;     // marge avec les bordures de route
+    private static final int   OB_MAX_ONSCREEN = 6;       // limite d’obstacles simultanés
+    private static final float OB_MIN_GAP_Y_MULT = 1.3f;  // distance verticale min = 1.3 * taille
+    private static final float OB_MIN_GAP_X_MULT = 0.6f;  // écarter un peu en X
+
+    private static class Obstacle {
+        float x;   // coin gauche (écran)
+        float y;   // coin haut (écran)
+        float s;   // taille du carré
+    }
+
+    private final List<Obstacle> obstacles = new ArrayList<>();
+    private final Random rng = new Random();
+
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private final Runnable obstacleSpawner = new Runnable() {
+        @Override public void run() {
+            if (gameOver) return;
+
+            final int w = getWidth();
+            final int h = getHeight();
+            if (w <= 0 || h <= 0) {
+                handler.postDelayed(this, OB_SPAWN_MS);
+                return;
+            }
+
+            synchronized (obstacles) {
+                if (obstacles.size() >= OB_MAX_ONSCREEN) {
+                    handler.postDelayed(this, OB_SPAWN_MS);
+                    return;
+                }
+            }
+
+            float size = Math.max(32f, w * OB_SIZE_PCT);
+            float spawnY = -size;
+
+            float cx = w * 0.5f;
+            float left  = cx - roadWidth / 2f + OB_MARGIN_PX;
+            float right = cx + roadWidth / 2f - OB_MARGIN_PX;
+
+            float minX = Math.max(0f, left);
+            float maxX = Math.min(w - size, right - size);
+
+            boolean spawned = false;
+            if (maxX > minX) {
+                for (int attempt = 0; attempt < 6 && !spawned; attempt++) {
+                    float tryX = minX + rng.nextFloat() * (maxX - minX);
+                    Obstacle candidate = new Obstacle();
+                    candidate.x = tryX;
+                    candidate.y = spawnY;
+                    candidate.s = size;
+
+                    if (canPlaceObstacle(candidate)) {
+                        synchronized (obstacles) { obstacles.add(candidate); }
+                        spawned = true;
+                    }
+                }
+            }
+
+            handler.postDelayed(this, OB_SPAWN_MS);
+        }
+    };
+
+    private boolean canPlaceObstacle(Obstacle cand) {
+        float cL = cand.x, cT = cand.y, cR = cand.x + cand.s, cB = cand.y + cand.s;
+        synchronized (obstacles) {
+            for (Obstacle ob : obstacles) {
+                if (ob.y < cand.s * 3f) {
+                    float oL = ob.x, oT = ob.y, oR = ob.x + ob.s, oB = ob.y + ob.s;
+
+                    boolean overlap = !(cR <= oL || cL >= oR || cB <= oT || cT >= oB);
+                    if (overlap) return false;
+
+                    if (Math.abs((ob.y + ob.s * 0.5f) - (cand.y + cand.s * 0.5f)) < cand.s * OB_MIN_GAP_Y_MULT)
+                        return false;
+
+                    if (Math.abs((ob.x + ob.s * 0.5f) - (cand.x + cand.s * 0.5f)) < cand.s * OB_MIN_GAP_X_MULT)
+                        return false;
+                }
+            }
+        }
+        return true;
+    }
 
     // navigation & handlers
     private final Handler ui = new Handler(Looper.getMainLooper());
@@ -99,11 +191,9 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
     // ================= Surface lifecycle =================
     @Override
     public void surfaceCreated(@NonNull SurfaceHolder holder) {
-        // compteur parties
         gamesPlayed += 1;
         prefs.edit().putInt("games_played", gamesPlayed).apply();
 
-        // Timer de la partie → victoire à 60 s
         timer = new CountDownTimer(60_000L, 1000) {
             @Override public void onTick(long millisUntilFinished) { timeLeft = millisUntilFinished; }
             @Override public void onFinish() {
@@ -111,7 +201,6 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
                 navigated = true;
                 timeLeft = 0;
 
-                // stop propre
                 if (sensorManager != null) sensorManager.unregisterListener(GameView.this);
                 stopThread();
 
@@ -122,7 +211,6 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
             }
         }.start();
 
-        // --- init route/voiture au cas où surfaceChanged() n'est pas appelé
         int w0 = getWidth();
         int h0 = getHeight();
         if (w0 > 0 && h0 > 0) {
@@ -137,16 +225,12 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
             dotY = h0 * 0.80f;
         }
 
-        // --- Premier draw synchrone pour éviter écran noir
+        // Premier draw pour éviter écran noir
         Canvas c = null;
-        try {
-            c = holder.lockCanvas();
-            if (c != null) draw(c);
-        } finally {
-            if (c != null) holder.unlockCanvasAndPost(c);
-        }
+        try { c = holder.lockCanvas(); if (c != null) draw(c); }
+        finally { if (c != null) holder.unlockCanvasAndPost(c); }
 
-        // --- démarrer le thread rendu
+        // Thread rendu
         thread = new GameThread(getHolder(), this);
         thread.setRunning(true);
         thread.start();
@@ -156,13 +240,15 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
             sensorManager.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_GAME);
         }
         lastUpdateNs = 0L;
+
+        // obstacles: démarrer le spawner
+        handler.postDelayed(obstacleSpawner, 400);
     }
 
     @Override
     public void surfaceChanged(@NonNull SurfaceHolder holder, int format, int width, int height) {
-        // set up route/skin avec tailles écran fiables
         roadWidth = Math.max(320f, width * 0.58f);
-        centerAmp = Math.max(60f,  width * 0.30f);
+        centerAmp = Math.max(centerAmp, 0f); // route droite (0)
 
         skinW = Math.max(48, (int)(width * 0.12f));
         skinH = (int)(skinW * 1.5f);
@@ -176,7 +262,11 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
     public void surfaceDestroyed(@NonNull SurfaceHolder holder) {
         if (timer != null) timer.cancel();
         if (sensorManager != null) sensorManager.unregisterListener(this);
+
+        handler.removeCallbacks(obstacleSpawner);
         stopThread();
+
+        synchronized (obstacles) { obstacles.clear(); }
 
         if (skinBitmap != null && !skinBitmap.isRecycled()) {
             skinBitmap.recycle();
@@ -184,28 +274,20 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
         }
     }
 
+    // Stop thread sans se join() soi-même
     private void stopThread() {
         if (thread == null) return;
 
-        // If we're on the game thread, never join() yourself – just ask it to stop.
         if (Thread.currentThread() == thread) {
             thread.setRunning(false);
             thread = null;
             return;
         }
 
-        // Otherwise (UI thread), stop and join safely.
         thread.setRunning(false);
-        boolean retry = true;
-        while (retry) {
-            try {
-                thread.join();
-                retry = false;
-            } catch (InterruptedException ignored) { }
-        }
+        try { thread.join(); } catch (InterruptedException ignored) { }
         thread = null;
     }
-
 
     // ================= Dessin =================
     @Override
@@ -216,50 +298,67 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
         final int w = getWidth();
         final int h = getHeight();
 
-        // Garde-fous
         if (roadWidth <= 0f) roadWidth = Math.max(320f, w * 0.58f);
+        if (centerAmp < 0f)  centerAmp = 0f;
 
-        // Fond herbe
+        // fond "herbe"
         canvas.drawColor(Color.rgb(34, 139, 34));
 
         Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
 
-        // === Route droite (asphalte) ===
-        float cx = w * 0.5f;                 // centre fixe
-        float left  = cx - roadWidth / 2f;   // bord gauche
-        float right = cx + roadWidth / 2f;   // bord droit
-
-        // Asphalte en un seul grand rectangle
+        // ---- route en bandes horizontales
         p.setColor(Color.rgb(85, 85, 85));
-        canvas.drawRect(Math.max(0, left), 0, Math.min(w, right), h, p);
+        float bandH = 24f;
+        for (float y = 0; y < h + bandH; y += bandH) {
+            float cx = w * 0.5f;
+            float left  = cx - roadWidth / 2f;
+            float right = cx + roadWidth / 2f;
+            if (right < 0 || left > w) continue;
+            canvas.drawRect(Math.max(0, left), y, Math.min(w, right), y + bandH + 1f, p);
+        }
 
-        // === Bordures blanches DROITES ===
+        // ---- bordures blanches
         Paint border = new Paint(Paint.ANTI_ALIAS_FLAG);
         border.setColor(Color.WHITE);
         border.setStrokeWidth(8f);
+        float step = 16f;
+        float prevY = -1, prevL = -1, prevR = -1;
+        for (float y = 0; y <= h; y += step) {
+            float cx = w * 0.5f;
+            float left  = cx - roadWidth / 2f;
+            float right = cx + roadWidth / 2f;
+            if (prevY >= 0) {
+                canvas.drawLine(prevL, prevY, left, y, border);
+                canvas.drawLine(prevR, prevY, right, y, border);
+            }
+            prevY = y; prevL = left; prevR = right;
+        }
 
-        // Traits blancs verticaux continus
-        canvas.drawLine(left,  0, left,  h, border);
-        canvas.drawLine(right, 0, right, h, border);
-
-        // === Ligne centrale JAUNE DROITE (pointillée qui défile) ===
+        // ---- ligne centrale pointillée
         Paint lane = new Paint(Paint.ANTI_ALIAS_FLAG);
         lane.setColor(Color.YELLOW);
         lane.setStrokeWidth(8f);
-
-        float dash  = laneDash;          // longueur d’un “trait”
-        float gap   = laneDash;          // longueur d’un “espace”
-        float phase = (trackOffsetY % (dash + gap)); // pour faire “défiler” vers le bas
-
+        float dash = laneDash, gap = laneDash;
+        float phase = (trackOffsetY % (dash + gap));
         for (float y = -phase; y < h; y += dash + gap) {
+            float cx = w * 0.5f;
             canvas.drawLine(cx, y, cx, y + dash, lane);
         }
 
-        // === Voiture ===
+        // ---- obstacles (carrés rouges)
+        Paint obPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        obPaint.setColor(Color.RED);
+        synchronized (obstacles) {
+            for (Obstacle ob : obstacles) {
+                canvas.drawRect(ob.x, ob.y, ob.x + ob.s, ob.y + ob.s, obPaint);
+            }
+        }
+
+        // ---- voiture
         if (skinBitmap != null) {
-            int leftBmp = (int) (dotX - skinW / 2f);
-            int topBmp  = (int) (dotY - skinH / 2f);
-            canvas.drawBitmap(skinBitmap, leftBmp, topBmp, null);
+            int left = (int) (dotX - skinW / 2f);
+            int top  = (int) (dotY - skinH / 2f);
+            canvas.drawBitmap(skinBitmap, left, top, null);
         } else {
             p.setColor(Color.RED);
             canvas.drawCircle(dotX, dotY, dotR, p);
@@ -273,7 +372,6 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
         float tw = p.measureText(timeText);
         canvas.drawText(timeText, w - tw - 16, 48, p);
     }
-
 
     // ================= Update =================
     public void update() {
@@ -289,65 +387,123 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
         trackSpeed = Math.min(trackMax, trackSpeed + speedGain * dt);
         trackOffsetY += trackSpeed * dt;
 
-        // physique latérale via tilt
-        float tilt = tiltAccelX;
-        if (Math.abs(tilt) < DEADZONE) tilt = 0f;
+        // ---- contrôle latéral type "voiture arcade" ----
+        // deadzone + courbe non-linéaire pour être doux près du 0 et nerveux plus loin
+        float t = tiltAccelX * TILT_SENS;
+        float absT = Math.abs(t);
+        float steer; // [-1..1] après mise en forme
 
-        float axPx = tilt * accelGain;
-        float jerkBoost = BOOST_GAIN * jerkG;
-        dotVx += (axPx + jerkBoost) * dt;
+        if (absT <= DEADZONE) {
+            steer = 0f;
+        } else {
+            float sign = Math.signum(t);
+            float s = (absT - DEADZONE) / (1f - DEADZONE); // [0..1]
+            float curved = (float) Math.pow(s, STEER_GAMMA);
+            steer = sign * curved;
+        }
 
-        dotVx *= friction;
-        if (dotVx >  MAX_SPEED) dotVx =  MAX_SPEED;
-        if (dotVx < -MAX_SPEED) dotVx = -MAX_SPEED;
+        // vitesse latérale cible
+        float targetVx = steer * MAX_LATERAL_SPEED;
 
+        // convergence exponentielle vers la cible (réactivité réglée par STEER_RESP)
+        float k = 1f - (float) Math.exp(-STEER_RESP * dt); // 0..1
+        dotVx += (targetVx - dotVx) * k;
+
+        // intégration position
         dotX += dotVx * dt;
 
+        // limiter aux bords d'écran
         float half = (skinBitmap != null ? skinW / 2f : dotR);
         float minX = half;
         float maxX = Math.max(minX, getWidth() - half);
         if (dotX < minX) { dotX = minX; dotVx = 0f; }
         if (dotX > maxX) { dotX = maxX; dotVx = 0f; }
 
-        // collision avec bords à la hauteur de la voiture
-        checkCollision();
+        // déplacer/clean obstacles
+        updateObstacles(dt);
+
+        // collisions : bords et obstacles
+        checkBorderCollision();
+        checkObstacleCollision();
     }
 
-    private void checkCollision() {
+    private void updateObstacles(float dt) {
+        final int h = getHeight();
+        synchronized (obstacles) {
+            Iterator<Obstacle> it = obstacles.iterator();
+            while (it.hasNext()) {
+                Obstacle ob = it.next();
+                ob.y += trackSpeed * dt; // descend à la vitesse de la route
+                if (ob.y > h + ob.s) it.remove();
+            }
+        }
+    }
+
+    private void checkBorderCollision() {
         if (gameOver) return;
         int w = getWidth();
 
-        float worldY = trackOffsetY + dotY;
         float cx = w * 0.5f;
         float left  = cx - roadWidth / 2f;
         float right = cx + roadWidth / 2f;
 
         float half = (skinBitmap != null ? skinW / 2f : dotR);
-        float margin = Math.max(6f, half * 0.75f); // tolérance
-        boolean outside = (dotX - half) < (left + margin) || (dotX + half) > (right - margin);
+        float margin = Math.max(6f, half * 0.12f); // petite tolérance
+        boolean outside = (dotX - half) <= (left + margin) || (dotX + half) >= (right - margin);
 
         if (outside) triggerDefeat();
     }
 
+    private void checkObstacleCollision() {
+        if (gameOver) return;
+
+        // boîte de la voiture
+        float carLeft, carTop, carRight, carBottom;
+        if (skinBitmap != null) {
+            carLeft   = dotX - skinW / 2f;
+            carRight  = dotX + skinW / 2f;
+            carTop    = dotY - skinH / 2f;
+            carBottom = dotY + skinH / 2f;
+        } else {
+            carLeft   = dotX - dotR;
+            carRight  = dotX + dotR;
+            carTop    = dotY - dotR;
+            carBottom = dotY + dotR;
+        }
+
+        synchronized (obstacles) {
+            for (Obstacle ob : obstacles) {
+                float obLeft   = ob.x;
+                float obTop    = ob.y;
+                float obRight  = ob.x + ob.s;
+                float obBottom = ob.y + ob.s;
+
+                boolean intersects = !(carRight < obLeft || carLeft > obRight ||
+                        carBottom < obTop || carTop > obBottom);
+                if (intersects) {
+                    triggerDefeat();
+                    return;
+                }
+            }
+        }
+    }
+
     private void triggerDefeat() {
-        if (navigated || gameOver) return;
+        if (navigated) return;
         navigated = true;
         gameOver = true;
 
         if (timer != null) timer.cancel();
         if (sensorManager != null) sensorManager.unregisterListener(this);
 
-        // Do NOT join here (can be called from the render thread)
+        handler.removeCallbacks(obstacleSpawner);
         if (thread != null) thread.setRunning(false);
 
         ui.post(() -> {
             Intent intent = new Intent(getContext(), DefaiteActivity.class);
-            // optionnel si jamais le contexte n'est pas une Activity :
-            // intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             getContext().startActivity(intent);
         });
     }
-
 
     // ================= Capteurs =================
     @Override
@@ -360,9 +516,9 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
         // low-pass (tilt lissé)
         tiltAccelX = LPF_ALPHA * gAx + (1f - LPF_ALPHA) * tiltAccelX;
 
-        // high-pass (jerk)
+        // high-pass (jerk) — optionnel ici
         float hp = gAx - lastRawAxG;
-        jerkG = HPF_ALPHA * (jerkG + hp);
+        jerkG = 0.85f * (jerkG + hp);
         lastRawAxG = gAx;
     }
 
@@ -391,6 +547,5 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
         buildSkinBitmap();
     }
 
-    // optionnel
     public int getGamesPlayed() { return gamesPlayed; }
 }
