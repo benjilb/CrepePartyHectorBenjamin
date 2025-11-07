@@ -13,6 +13,7 @@
         android:theme="@style/Theme.CrepeParty_Hector_Benjamin">
 
 
+
         <activity android:name=".AccueilActivity"
             android:exported="true">
             <intent-filter>
