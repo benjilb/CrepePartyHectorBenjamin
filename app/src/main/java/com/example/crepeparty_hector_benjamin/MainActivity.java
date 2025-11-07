@@ -37,7 +37,7 @@ public class MainActivity extends AppCompatActivity {
         setContentView(gv);
         SharedPreferences prefs = getSharedPreferences("crepe_prefs", MODE_PRIVATE);
         int total = prefs.getInt("games_played", 0);
-        Toast.makeText(this, "Total de parties : " + total, Toast.LENGTH_SHORT).show();
+        //Toast.makeText(this, "Total de parties : " + total, Toast.LENGTH_SHORT).show();
 
 
 
