@@ -18,6 +18,16 @@ import android.os.Looper;
 import android.util.AttributeSet;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
+import android.view.MotionEvent;
+import android.os.SystemClock;
+import android.media.AudioFormat;
+import android.media.AudioRecord;
+import android.media.MediaRecorder;
+import android.content.pm.PackageManager;
+import android.Manifest;
+import androidx.core.content.ContextCompat;
+import android.os.SystemClock;
+
 
 import androidx.annotation.DrawableRes;
 import androidx.annotation.NonNull;
@@ -89,6 +99,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
         float s;   // taille du carré
     }
 
+
     private final List<Obstacle> obstacles = new ArrayList<>();
     private final Random rng = new Random();
 
@@ -140,6 +151,66 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
             handler.postDelayed(this, OB_SPAWN_MS);
         }
     };
+
+    // --------- Power-up: billes + bouclier ----------
+    private static final long  DOT_SPAWN_MS       = 800L;  // fréquence spawn billes
+    private static final float DOT_SIZE_PX        = 14f;
+    private static final int   DOTS_ONSCREEN_MAX  = 12;
+    private static final float DOT_COLLECT_GAIN   = 0.12f; // ~9 billes pour full
+    private static final long  SHIELD_DURATION_MS = 5_000L;
+    private static final long  BLINK_PERIOD_MS    = 300L;
+
+    private static final float HUD_BAR_W = 220f;
+    private static final float HUD_BAR_H = 18f;
+    private static final float HUD_BAR_PAD = 12f;
+
+    private float powerFill = 0f;
+    private boolean shieldActive = false;
+    private long shieldEndUptimeMs = 0L;
+
+    // --------- Détecteur micro pour activer le bouclier ----------
+    private AudioRecord micRec = null;
+    private Thread micThread = null;
+    private volatile boolean micRunning = false;
+    private volatile float micLevel = 0f;
+    private static final int   MIC_SR = 44100;
+    private static final int   MIC_BUF_MIN = 2048;
+    private static final float MIC_ATTACK = 0.35f;
+    private static final float MIC_RELEASE = 0.12f;
+    private static final float MIC_TRIGGER_LEVEL = 0.25f;
+    private static final long  MIC_COOLDOWN_MS = 800L;
+    private long lastMicTriggerMs = 0L;
+
+
+    // Billes à collecter
+    private static class Dot { float x, y; }
+    private final List<Dot> dots = new ArrayList<>();
+
+    private final Runnable dotSpawner = new Runnable() {
+        @Override public void run() {
+            if (gameOver) return;
+            final int w = getWidth();
+            final int h = getHeight();
+            if (w <= 0 || h <= 0) { handler.postDelayed(this, DOT_SPAWN_MS); return; }
+
+            synchronized (dots) {
+                if (dots.size() < DOTS_ONSCREEN_MAX) {
+                    // zone autorisée = route avec marge
+                    float cx = w * 0.5f;
+                    float left  = cx - roadWidth / 2f + DOT_SIZE_PX * 2f;
+                    float right = cx + roadWidth / 2f - DOT_SIZE_PX * 2f;
+                    if (right > left) {
+                        Dot d = new Dot();
+                        d.x = left + rng.nextFloat() * (right - left);
+                        d.y = -DOT_SIZE_PX * 2f;
+                        dots.add(d);
+                    }
+                }
+            }
+            handler.postDelayed(this, DOT_SPAWN_MS);
+        }
+    };
+
 
     private boolean canPlaceObstacle(Obstacle cand) {
         float cL = cand.x, cT = cand.y, cR = cand.x + cand.s, cB = cand.y + cand.s;
@@ -202,6 +273,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
                 timeLeft = 0;
 
                 if (sensorManager != null) sensorManager.unregisterListener(GameView.this);
+                stopMic();
                 stopThread();
 
                 ui.post(() -> {
@@ -239,10 +311,15 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
         if (accelerometer != null && sensorManager != null) {
             sensorManager.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_GAME);
         }
+
+        // micro: activer l'écoute si la permission est accordée
+        startMicIfAllowed();
+
         lastUpdateNs = 0L;
 
         // obstacles: démarrer le spawner
         handler.postDelayed(obstacleSpawner, 400);
+        handler.postDelayed(dotSpawner, 300);
     }
 
     @Override
@@ -263,10 +340,16 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
         if (timer != null) timer.cancel();
         if (sensorManager != null) sensorManager.unregisterListener(this);
 
+
+        stopMic();
+
         handler.removeCallbacks(obstacleSpawner);
+        handler.removeCallbacks(dotSpawner);
         stopThread();
 
         synchronized (obstacles) { obstacles.clear(); }
+        synchronized (dots) { dots.clear(); }
+
 
         if (skinBitmap != null && !skinBitmap.isRecycled()) {
             skinBitmap.recycle();
@@ -354,6 +437,16 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
             }
         }
 
+        // ---- billes blanches à collecter
+        Paint dotPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        dotPaint.setColor(Color.WHITE);
+        synchronized (dots) {
+            for (Dot d : dots) {
+                canvas.drawCircle(d.x, d.y, DOT_SIZE_PX, dotPaint);
+            }
+        }
+
+
         // ---- voiture
         if (skinBitmap != null) {
             int left = (int) (dotX - skinW / 2f);
@@ -363,6 +456,22 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
             p.setColor(Color.RED);
             canvas.drawCircle(dotX, dotY, dotR, p);
         }
+        // ---- halo de bouclier si actif
+        if (shieldActive) {
+            Paint halo = new Paint(Paint.ANTI_ALIAS_FLAG);
+            halo.setStyle(Paint.Style.STROKE);
+            halo.setStrokeWidth(10f);
+            halo.setColor(Color.CYAN);
+            float r = (skinBitmap != null ? Math.max(skinW, skinH) * 0.65f : dotR * 1.6f);
+            canvas.drawCircle(dotX, dotY, r, halo);
+
+            // léger remplissage translucide
+            Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
+            fill.setStyle(Paint.Style.FILL);
+            fill.setColor(Color.argb(60, 0, 255, 255));
+            canvas.drawCircle(dotX, dotY, r * 0.96f, fill);
+        }
+
 
         // HUD
         p.setColor(Color.BLACK);
@@ -371,7 +480,47 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
         String timeText = "Temps: " + (timeLeft / 1000) + "s";
         float tw = p.measureText(timeText);
         canvas.drawText(timeText, w - tw - 16, 48, p);
+
+
+        // ---- HUD power bar (bas-gauche)
+        float bx = HUD_BAR_PAD, by = getHeight() - HUD_BAR_PAD - HUD_BAR_H;
+        Paint hudFrame = new Paint(Paint.ANTI_ALIAS_FLAG);
+        hudFrame.setStyle(Paint.Style.STROKE);
+        hudFrame.setStrokeWidth(3f);
+        hudFrame.setColor(Color.WHITE);
+        canvas.drawRect(bx, by, bx + HUD_BAR_W, by + HUD_BAR_H, hudFrame);
+
+        float frac = Math.max(0f, Math.min(1f, powerFill));
+        boolean blinkOn = true;
+        if (shieldActive) {
+            long blinkPhase = (SystemClock.uptimeMillis() / BLINK_PERIOD_MS) % 2;
+            blinkOn = (blinkPhase == 0);
+        }
+        Paint hudFill = new Paint(Paint.ANTI_ALIAS_FLAG);
+        hudFill.setStyle(Paint.Style.FILL);
+        hudFill.setColor(shieldActive ? Color.CYAN : Color.YELLOW);
+
+        if (!shieldActive || blinkOn) {
+            canvas.drawRect(bx + 2f, by + 2f,
+                    bx + 2f + (HUD_BAR_W - 4f) * (shieldActive ? 1f : frac),
+                    by + HUD_BAR_H - 2f, hudFill);
+        }
+
+        if (!shieldActive && frac >= 1f) {
+            Paint ready = new Paint(Paint.ANTI_ALIAS_FLAG);
+            ready.setStyle(Paint.Style.STROKE);
+            ready.setStrokeWidth(4f);
+            ready.setColor(Color.CYAN);
+            canvas.drawRect(bx - 2f, by - 2f, bx + HUD_BAR_W + 2f, by + HUD_BAR_H + 2f, ready);
+        }
+
     }
+
+    private void activateShield() {
+        shieldActive = true;
+        shieldEndUptimeMs = SystemClock.uptimeMillis() + SHIELD_DURATION_MS;
+    }
+
 
     // ================= Update =================
     public void update() {
@@ -421,10 +570,23 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
 
         // déplacer/clean obstacles
         updateObstacles(dt);
+        updateDots(dt);
+
 
         // collisions : bords et obstacles
         checkBorderCollision();
         checkObstacleCollision();
+
+
+        // Activation bouclier au son si jauge pleine
+        if (!shieldActive && powerFill >= 1f) {
+            long nowMs = SystemClock.uptimeMillis(); // différent de 'now' en ns
+            if (micLevel >= MIC_TRIGGER_LEVEL && (nowMs - lastMicTriggerMs) >= MIC_COOLDOWN_MS) {
+                activateShield();
+                lastMicTriggerMs = nowMs;
+            }
+        }
+
     }
 
     private void updateObstacles(float dt) {
@@ -436,6 +598,52 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
                 ob.y += trackSpeed * dt; // descend à la vitesse de la route
                 if (ob.y > h + ob.s) it.remove();
             }
+        }
+    }
+
+    private void updateDots(float dt) {
+        final int h = getHeight();
+
+        // Move
+        synchronized (dots) {
+            Iterator<Dot> it = dots.iterator();
+            while (it.hasNext()) {
+                Dot d = it.next();
+                d.y += trackSpeed * dt;
+                if (d.y > h + DOT_SIZE_PX * 2f) it.remove();
+            }
+        }
+
+        // Collision collecte avec la voiture
+        float carLeft, carTop, carRight, carBottom;
+        if (skinBitmap != null) {
+            carLeft = dotX - skinW / 2f; carRight = dotX + skinW / 2f;
+            carTop = dotY - skinH / 2f;  carBottom = dotY + skinH / 2f;
+        } else {
+            carLeft = dotX - dotR; carRight = dotX + dotR;
+            carTop = dotY - dotR;  carBottom = dotY + dotR;
+        }
+
+        boolean collected = false;
+        synchronized (dots) {
+            Iterator<Dot> it = dots.iterator();
+            while (it.hasNext()) {
+                Dot d = it.next();
+                float dx = Math.max(0, Math.max(carLeft - d.x, d.x - carRight));
+                float dy = Math.max(0, Math.max(carTop  - d.y, d.y - carBottom));
+                // test AABB-point avec tolérance
+                if (dx == 0 && dy == 0) { it.remove(); collected = true; }
+                else {
+                    // cercle voiture approximatif pour être plus “facile”
+                    float cx = dotX, cy = dotY;
+                    float rr = (skinBitmap != null ? Math.min(skinW, skinH) * 0.35f : dotR);
+                    float ddx = d.x - cx, ddy = d.y - cy;
+                    if (ddx*ddx + ddy*ddy < rr*rr) { it.remove(); collected = true; }
+                }
+            }
+        }
+        if (collected) {
+            powerFill = Math.min(1f, powerFill + DOT_COLLECT_GAIN);
         }
     }
 
@@ -481,9 +689,19 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
                 boolean intersects = !(carRight < obLeft || carLeft > obRight ||
                         carBottom < obTop || carTop > obBottom);
                 if (intersects) {
-                    triggerDefeat();
+                    if (shieldActive) {
+                        // Consomme le bouclier et détruit l’obstacle
+                        shieldActive = false;
+                        powerFill = 0f;
+                        synchronized (obstacles) { obstacles.remove(ob); }
+                        // petit “knockback” visuel optionnel (facultatif)
+                        // dotVx *= 0.6f;
+                    } else {
+                        triggerDefeat();
+                    }
                     return;
                 }
+
             }
         }
     }
@@ -495,6 +713,9 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
 
         if (timer != null) timer.cancel();
         if (sensorManager != null) sensorManager.unregisterListener(this);
+
+
+        stopMic();
 
         handler.removeCallbacks(obstacleSpawner);
         if (thread != null) thread.setRunning(false);
@@ -539,13 +760,67 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
         }
     }
 
-    public void setSkin(@DrawableRes int resId) {
-        selectedSkinResId = resId;
-        if (prefs != null) {
-            prefs.edit().putInt("selected_skin_res", resId).apply();
+    private void startMicIfAllowed() {
+        if (micRunning) return;
+        // Permission déjà demandée sur l'accueil. Si absente, on ignore.
+        if (ContextCompat.checkSelfPermission(getContext(), Manifest.permission.RECORD_AUDIO)
+                != PackageManager.PERMISSION_GRANTED) {
+            return;
         }
-        buildSkinBitmap();
+        int min = AudioRecord.getMinBufferSize(MIC_SR,
+                AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
+        int buf = Math.max(min, MIC_BUF_MIN);
+
+        try {
+            micRec = new AudioRecord(MediaRecorder.AudioSource.MIC,
+                    MIC_SR, AudioFormat.CHANNEL_IN_MONO,
+                    AudioFormat.ENCODING_PCM_16BIT, buf);
+            micRec.startRecording();
+            micRunning = true;
+            micThread = new Thread(() -> micLoop(buf), "ShieldMic");
+            micThread.start();
+        } catch (Exception e) {
+            stopMic();
+        }
     }
 
+    private void stopMic() {
+        micRunning = false;
+        if (micThread != null) {
+            try { micThread.join(); } catch (InterruptedException ignored) {}
+            micThread = null;
+        }
+        if (micRec != null) {
+            try { micRec.stop(); } catch (Exception ignored) {}
+            try { micRec.release(); } catch (Exception ignored) {}
+            micRec = null;
+        }
+    }
+
+    private void micLoop(int bufLen) {
+        short[] buf = new short[bufLen];
+        while (micRunning && micRec != null) {
+            int n = micRec.read(buf, 0, buf.length);
+            if (n > 0) {
+                // RMS 16-bit -> [0..1]
+                double sum = 0;
+                for (int i = 0; i < n; i++) {
+                    double s = buf[i] / 32768.0;
+                    sum += s * s;
+                }
+                double rms = Math.sqrt(sum / n);            // linéaire
+                double vLog = Math.min(1.0, Math.log10(1 + 9 * rms)); // mapping log simple
+                float target = (float) vLog;
+
+                // lissage attack/release
+                if (target > micLevel) {
+                    micLevel += MIC_ATTACK * (target - micLevel);
+                } else {
+                    micLevel += MIC_RELEASE * (target - micLevel);
+                }
+            }
+            try { Thread.sleep(16); } catch (InterruptedException ignored) {}
+        }
+    }
     public int getGamesPlayed() { return gamesPlayed; }
 }
