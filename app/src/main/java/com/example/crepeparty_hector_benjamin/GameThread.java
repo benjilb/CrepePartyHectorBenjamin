@@ -18,8 +18,13 @@ public class GameThread extends Thread {
 
     @Override
     public void run() {
+
+        android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_DISPLAY);
+
+
         final long TARGET_FRAME_NS = 16_666_667L; // ~16.67 ms
         Canvas canvas;
+
 
         while (running) {
             long frameStart = System.nanoTime();
@@ -52,9 +57,8 @@ public class GameThread extends Thread {
                     Thread.sleep(sleepMs, sleepExtraNs);
                 } catch (InterruptedException ignored) { }
             } else {
-                // Si on est en retard, céder la main un instant
-                Thread.yield();
-            }
+                // en retard
+                try { Thread.sleep(1); } catch (InterruptedException ignored) {}            }
         }
     }
 }

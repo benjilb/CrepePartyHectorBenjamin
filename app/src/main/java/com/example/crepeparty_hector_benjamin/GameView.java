@@ -51,14 +51,13 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
     private SensorManager sensorManager;
     private Sensor accelerometer;
     private volatile float tiltAccelX = 0f;
-    private static final float LPF_ALPHA = 0.12f;
 
-    // --- contrôle latéral "arcade"
-    private static final float DEADZONE = 0.04f;          // petite zone morte
-    private static final float MAX_LATERAL_SPEED = 1000f; // px/s (vitesse latérale max)
-    private static final float STEER_RESP = 10f;          // réactivité (par seconde)
-    private static final float TILT_SENS = 1.0f;          // sensibilité globale du tilt
-    private static final float STEER_GAMMA = 1.8f;        // courbe non-linéaire (>1 = douceur près du zéro)
+    private static final float LPF_ALPHA = 0.35f;     // avant 0.12 -> moins de latence
+    private static final float DEADZONE = 0.02f;      // avant 0.04
+    private static final float MAX_LATERAL_SPEED = 1400f; // avant 1000
+    private static final float STEER_RESP = 18f;      // avant 10
+    private static final float TILT_SENS = 1.3f;      // avant 1.0
+    private static final float STEER_GAMMA = 1.3f;    // avant 1.8 -> plus linéaire
 
     // (gardées si tu veux réutiliser ailleurs)
     private float lastRawAxG = 0f;
@@ -98,6 +97,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
         float y;   // coin haut (écran)
         float s;   // taille du carré
     }
+
 
 
     private final List<Obstacle> obstacles = new ArrayList<>();
