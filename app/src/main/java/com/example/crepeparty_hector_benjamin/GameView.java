@@ -211,6 +211,11 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
         }
     };
 
+    // Grâce collision bord
+    private static final long BORDER_GRACE_MS = 700L;
+    private long borderGraceUntilMs = 0L;
+
+
 
     private boolean canPlaceObstacle(Obstacle cand) {
         float cL = cand.x, cT = cand.y, cR = cand.x + cand.s, cB = cand.y + cand.s;
@@ -526,6 +531,13 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
     public void update() {
         if (gameOver) return;
 
+
+        // Expiration du bouclier à la fin du timer
+        if (shieldActive && SystemClock.uptimeMillis() >= shieldEndUptimeMs) {
+            shieldActive = false;
+            powerFill = 0f;
+        }
+
         long now = System.nanoTime();
         if (lastUpdateNs == 0L) lastUpdateNs = now;
         float dt = (now - lastUpdateNs) / 1_000_000_000f;
@@ -649,18 +661,58 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
 
     private void checkBorderCollision() {
         if (gameOver) return;
-        int w = getWidth();
 
+        final long nowMs = SystemClock.uptimeMillis();
+        if (nowMs < borderGraceUntilMs) return; // période de grâce active
+
+        int w = getWidth();
         float cx = w * 0.5f;
         float left  = cx - roadWidth / 2f;
         float right = cx + roadWidth / 2f;
 
-        float half = (skinBitmap != null ? skinW / 2f : dotR);
-        float margin = Math.max(6f, half * 0.12f); // petite tolérance
-        boolean outside = (dotX - half) <= (left + margin) || (dotX + half) >= (right - margin);
+        float half   = (skinBitmap != null ? skinW / 2f : dotR);
+        float margin = Math.max(6f, half * 0.12f);
 
-        if (outside) triggerDefeat();
+        float carLeft  = dotX - half;
+        float carRight = dotX + half;
+
+        boolean hitLeft  = carLeft  <= (left  + margin);
+        boolean hitRight = carRight >= (right - margin);
+
+        if (!(hitLeft || hitRight)) return;
+
+        if (shieldActive) {
+            // Consomme bouclier + grâce temporaire pour éviter la mort instantanée
+            shieldActive = false;
+            powerFill = 0f;
+            borderGraceUntilMs = nowMs + BORDER_GRACE_MS;
+
+            // Dégagement à l'intérieur + impulsion opposée au mur
+            float pushInside = Math.max(half * 0.8f, roadWidth * 0.08f);
+            if (hitLeft) {
+                dotX = left + margin + half + pushInside;
+                // Impulsion vers la droite si on glissait vers le mur
+                dotVx = Math.max(dotVx, 480f);
+            } else {
+                dotX = right - margin - half - pushInside;
+                // Impulsion vers la gauche si on glissait vers le mur
+                dotVx = Math.min(dotVx, -480f);
+            }
+
+            // Si la route est très étroite, recentre au besoin
+            float minX = left + margin + half;
+            float maxX = right - margin - half;
+            if (dotX < minX) dotX = minX;
+            if (dotX > maxX) dotX = maxX;
+
+            return;
+        }
+
+        // Pas de bouclier: défaite
+        triggerDefeat();
     }
+
+
 
     private void checkObstacleCollision() {
         if (gameOver) return;
