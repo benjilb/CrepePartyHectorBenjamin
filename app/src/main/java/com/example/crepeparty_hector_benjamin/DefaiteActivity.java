@@ -6,6 +6,7 @@ import android.widget.Button;
 import android.widget.TextView;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.res.ResourcesCompat;
 
 public class DefaiteActivity extends AppCompatActivity {
 
@@ -16,18 +17,17 @@ public class DefaiteActivity extends AppCompatActivity {
 
         TextView message = findViewById(R.id.textDefaite);
         Button rejouerBtn = findViewById(R.id.buttonRejouer);
-        Button retourBtn = findViewById(R.id.buttonRetour);
+        Button retourBtn  = findViewById(R.id.buttonRetour);
 
-        message.setText(" Vous avez perdu... ");
+        message.setText("Vous avez perdu");
+        message.setTypeface(ResourcesCompat.getFont(this, R.font.pixel));
 
-        // Bouton pour relancer une partie
         rejouerBtn.setOnClickListener(v -> {
             Intent intent = new Intent(DefaiteActivity.this, MainActivity.class);
             startActivity(intent);
             finish();
         });
 
-        // Bouton pour retourner au menu principal
         retourBtn.setOnClickListener(v -> {
             Intent intent = new Intent(DefaiteActivity.this, AccueilActivity.class);
             startActivity(intent);
