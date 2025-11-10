@@ -18,7 +18,6 @@ import android.os.Looper;
 import android.util.AttributeSet;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
-import android.view.MotionEvent;
 import android.os.SystemClock;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
@@ -26,12 +25,8 @@ import android.media.MediaRecorder;
 import android.content.pm.PackageManager;
 import android.Manifest;
 import androidx.core.content.ContextCompat;
-import android.os.SystemClock;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
-
-
-import androidx.annotation.DrawableRes;
 import androidx.annotation.NonNull;
 
 import java.util.ArrayList;
@@ -49,68 +44,62 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
     private float distancePx = 0f;
     private static final float PIXELS_PER_METER = 60f; // 60 px = 1 m
 
-    // ---------------- Core & état ----------------
+    // état
     private GameThread thread;
     private SharedPreferences prefs;
 
     private int gamesPlayed;
-    private long timeLeft = 60_000L;     // 60 s
+    private long timeLeft = 60_000L;
     private CountDownTimer timer;
 
-    // --- capteurs
+    // capteurs
     private SensorManager sensorManager;
     private Sensor accelerometer;
     private volatile float tiltAccelX = 0f;
 
-    private static final float LPF_ALPHA = 0.35f;     // avant 0.12 -> moins de latence
-    private static final float DEADZONE = 0.02f;      // avant 0.04
-    private static final float MAX_LATERAL_SPEED = 1400f; // avant 1000
-    private static final float STEER_RESP = 18f;      // avant 10
-    private static final float TILT_SENS = 1.3f;      // avant 1.0
-    private static final float STEER_GAMMA = 1.3f;    // avant 1.8 -> plus linéaire
+    private static final float LPF_ALPHA = 0.35f;
+    private static final float DEADZONE = 0.02f;
+    private static final float MAX_LATERAL_SPEED = 1400f;
+    private static final float STEER_RESP = 18f;
+    private static final float TILT_SENS = 1.3f;
+    private static final float STEER_GAMMA = 1.3f;
 
-
-
-    // (gardées si tu veux réutiliser ailleurs)
     private float lastRawAxG = 0f;
     private float jerkG = 0f;
 
-    // --- physique voiture
     private float dotX = 0f;
     private float dotVx = 0f;
     private float dotY = 0f;
-    private final float dotR = 24f;      // utilisé si pas de skin
+    private final float dotR = 24f;
     private long lastUpdateNs = 0L;
 
-    // --- skin voiture
+    // skin voiture
     private int selectedSkinResId = 0;
     private Bitmap skinBitmap = null;
     private int skinW = 64, skinH = 96;
 
-    // ---------------- Map/route qui défile ----------------
-    private float trackOffsetY = 0f;        // défilement vertical (px)
-    private float trackSpeed   = 340f;      // vitesse de départ (px/s)
-    private float speedGain    = 26f;       // accélération route (px/s²)
-    private float trackMax     = 1000f;     // vitesse max (px/s)
-    private float roadWidth    = 0f;        // largeur de route (px)
-    private float centerAmp    = 0f;        // 0 = route droite
-    private float laneDash     = 28f;       // taille pointillé central (px)
+    // Map/route qui défile
+    private float trackOffsetY = 0f;
+    private float trackSpeed   = 340f;
+    private float speedGain    = 26f;
+    private float trackMax     = 1000f;
+    private float roadWidth    = 0f;
+    private float centerAmp    = 0f;
+    private float laneDash     = 28f;
 
-    // ---------------- Obstacles (carrés rouges) ----------------
-    private static final float OB_SIZE_PCT     = 0.06f;   // ~6% de la largeur écran
-    private static final long  OB_SPAWN_MS     = 1200L;   // spawn moins fréquent
-    private static final float OB_MARGIN_PX    = 24f;     // marge avec les bordures de route
-    private static final int   OB_MAX_ONSCREEN = 6;       // limite d’obstacles simultanés
-    private static final float OB_MIN_GAP_Y_MULT = 1.3f;  // distance verticale min = 1.3 * taille
-    private static final float OB_MIN_GAP_X_MULT = 0.6f;  // écarter un peu en X
+    //Obstacles (carrés rouges)
+    private static final float OB_SIZE_PCT     = 0.06f;
+    private static final long  OB_SPAWN_MS     = 1200L;
+    private static final float OB_MARGIN_PX    = 24f;
+    private static final int   OB_MAX_ONSCREEN = 6;
+    private static final float OB_MIN_GAP_Y_MULT = 1.3f;
+    private static final float OB_MIN_GAP_X_MULT = 0.6f;
 
     private static class Obstacle {
-        float x;   // coin gauche (écran)
-        float y;   // coin haut (écran)
-        float s;   // taille du carré
+        float x;
+        float y;
+        float s;
     }
-
-
 
     private final List<Obstacle> obstacles = new ArrayList<>();
     private final Random rng = new Random();
@@ -164,11 +153,11 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
         }
     };
 
-    // --------- Power-up: billes + bouclier ----------
-    private static final long  DOT_SPAWN_MS       = 800L;  // fréquence spawn billes
+    // Power-up: billes + bouclier
+    private static final long  DOT_SPAWN_MS       = 800L;
     private static final float DOT_SIZE_PX        = 14f;
     private static final int   DOTS_ONSCREEN_MAX  = 12;
-    private static final float DOT_COLLECT_GAIN   = 0.12f; // ~9 billes pour full
+    private static final float DOT_COLLECT_GAIN   = 0.12f; // ~9 billes pour remplir
     private static final long  SHIELD_DURATION_MS = 5_000L;
     private static final long  BLINK_PERIOD_MS    = 300L;
 
@@ -182,7 +171,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
     private boolean shieldActive = false;
     private long shieldEndUptimeMs = 0L;
 
-    // --------- Détecteur micro pour activer le bouclier ----------
+    // Détecteur micro pour activer le bouclier
     private AudioRecord micRec = null;
     private Thread micThread = null;
     private volatile boolean micRunning = false;
@@ -196,7 +185,6 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
     private long lastMicTriggerMs = 0L;
 
 
-    // Billes à collecter
     private static class Dot { float x, y; }
     private final List<Dot> dots = new ArrayList<>();
 
@@ -209,7 +197,6 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
 
             synchronized (dots) {
                 if (dots.size() < DOTS_ONSCREEN_MAX) {
-                    // zone autorisée = route avec marge
                     float cx = w * 0.5f;
                     float left  = cx - roadWidth / 2f + DOT_SIZE_PX * 2f;
                     float right = cx + roadWidth / 2f - DOT_SIZE_PX * 2f;
@@ -225,7 +212,6 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
         }
     };
 
-    // Grâce collision bord
     private static final long BORDER_GRACE_MS = 700L;
     private long borderGraceUntilMs = 0L;
 
@@ -252,17 +238,13 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
         return true;
     }
 
-    // navigation & handlers
     private final Handler ui = new Handler(Looper.getMainLooper());
-    private volatile boolean navigated = false; // évite double navigation
+    private volatile boolean navigated = false;
     private boolean gameOver = false;
 
-    // ---------------- Constructeurs requis pour inflate XML ----------------
     public GameView(Context context) { super(context); init(context); }
     public GameView(Context context, AttributeSet attrs) { super(context, attrs); init(context); }
     public GameView(Context context, AttributeSet attrs, int defStyleAttr) { super(context, attrs, defStyleAttr); init(context); }
-
-    // ------------------------------------------------------
     private static float dp(Context c, float v){
         return v * c.getResources().getDisplayMetrics().density;
     }
@@ -289,7 +271,6 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
         });
     }
 
-    // ================= Surface lifecycle =================
     @Override
     public void surfaceCreated(@NonNull SurfaceHolder holder) {
         gamesPlayed += 1;
@@ -314,7 +295,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
                 }
             }.start();
         } else {
-            // ENDLESS: pas de timer
+            // Sans fin: pas de timer
             timeLeft = 0L;
         }
 
@@ -333,27 +314,22 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
             dotY = h0 * 0.80f;
         }
 
-        // Premier draw pour éviter écran noir
         Canvas c = null;
         try { c = holder.lockCanvas(); if (c != null) draw(c); }
         finally { if (c != null) holder.unlockCanvasAndPost(c); }
 
-        // Thread rendu
         thread = new GameThread(getHolder(), this);
         thread.setRunning(true);
         thread.start();
 
-        // capteurs
         if (accelerometer != null && sensorManager != null) {
             sensorManager.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_GAME);
         }
 
-        // micro: activer l'écoute si la permission est accordée
         startMicIfAllowed();
 
         lastUpdateNs = 0L;
 
-        // obstacles: démarrer le spawner
         handler.postDelayed(obstacleSpawner, 400);
         handler.postDelayed(dotSpawner, 300);
     }
@@ -361,7 +337,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
     @Override
     public void surfaceChanged(@NonNull SurfaceHolder holder, int format, int width, int height) {
         roadWidth = Math.max(320f, width * 0.58f);
-        centerAmp = Math.max(centerAmp, 0f); // route droite (0)
+        centerAmp = Math.max(centerAmp, 0f);
 
         skinW = Math.max(48, (int)(width * 0.12f));
         skinH = (int)(skinW * 1.5f);
@@ -425,7 +401,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
 
         Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
 
-        // ---- route en bandes horizontales
+        // route en bandes horizontales
         p.setColor(Color.rgb(85, 85, 85));
         float bandH = 24f;
         for (float y = 0; y < h + bandH; y += bandH) {
@@ -436,7 +412,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
             canvas.drawRect(Math.max(0, left), y, Math.min(w, right), y + bandH + 1f, p);
         }
 
-        // ---- bordures blanches
+        // bordures blanches
         Paint border = new Paint(Paint.ANTI_ALIAS_FLAG);
         border.setColor(Color.WHITE);
         border.setStrokeWidth(8f);
@@ -453,7 +429,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
             prevY = y; prevL = left; prevR = right;
         }
 
-        // ---- ligne centrale pointillée
+        // ligne centrale pointillée
         Paint lane = new Paint(Paint.ANTI_ALIAS_FLAG);
         lane.setColor(Color.YELLOW);
         lane.setStrokeWidth(8f);
@@ -464,7 +440,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
             canvas.drawLine(cx, y, cx, y + dash, lane);
         }
 
-        // ---- obstacles (carrés rouges)
+        // obstacles (carrés rouges)
         Paint obPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         obPaint.setColor(Color.RED);
         synchronized (obstacles) {
@@ -473,7 +449,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
             }
         }
 
-        // ---- billes blanches à collecter
+        // billes blanches à collecter
         Paint dotPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         dotPaint.setColor(Color.WHITE);
         synchronized (dots) {
@@ -483,7 +459,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
         }
 
 
-        // ---- voiture
+        // voiture
         if (skinBitmap != null) {
             int left = (int) (dotX - skinW / 2f);
             int top  = (int) (dotY - skinH / 2f);
@@ -492,7 +468,6 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
             p.setColor(Color.RED);
             canvas.drawCircle(dotX, dotY, dotR, p);
         }
-        // ---- halo de bouclier si actif
         if (shieldActive) {
             Paint halo = new Paint(Paint.ANTI_ALIAS_FLAG);
             halo.setStyle(Paint.Style.STROKE);
@@ -501,7 +476,6 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
             float r = (skinBitmap != null ? Math.max(skinW, skinH) * 0.65f : dotR * 1.6f);
             canvas.drawCircle(dotX, dotY, r, halo);
 
-            // léger remplissage translucide
             Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
             fill.setStyle(Paint.Style.FILL);
             fill.setColor(Color.argb(60, 0, 255, 255));
@@ -526,7 +500,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
 
 
 
-        // ---- HUD power bar (bas-gauche)
+        // HUD power bar (bas-gauche)
         float bx = HUD_BAR_PAD;
         float by = getHeight() - HUD_BAR_PAD - HUD_BAR_H - sysBottomInsetPx - hudExtraOffsetPx;
         Paint hudFrame = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -565,14 +539,10 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
         shieldActive = true;
         shieldEndUptimeMs = SystemClock.uptimeMillis() + SHIELD_DURATION_MS;
     }
-
-
-    // ================= Update =================
     public void update() {
         if (gameOver) return;
 
 
-        // Expiration du bouclier à la fin du timer
         if (shieldActive && SystemClock.uptimeMillis() >= shieldEndUptimeMs) {
             shieldActive = false;
             powerFill = 0f;
@@ -586,59 +556,49 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
 
         // défilement route qui accélère
         if (gameMode == GameMode.ENDLESS) {
-            trackSpeed += speedGain * dt;      // sans plafond
+            trackSpeed += speedGain * dt;
         } else {
             trackSpeed = Math.min(trackMax, trackSpeed + speedGain * dt);
         }
         trackOffsetY += trackSpeed * dt;
-        distancePx += trackSpeed * dt; // px parcourus par la route
+        distancePx += trackSpeed * dt;
 
 
-        // ---- contrôle latéral type "voiture arcade" ----
-        // deadzone + courbe non-linéaire pour être doux près du 0 et nerveux plus loin
+
         float t = tiltAccelX * TILT_SENS;
         float absT = Math.abs(t);
-        float steer; // [-1..1] après mise en forme
+        float steer;
 
         if (absT <= DEADZONE) {
             steer = 0f;
         } else {
             float sign = Math.signum(t);
-            float s = (absT - DEADZONE) / (1f - DEADZONE); // [0..1]
+            float s = (absT - DEADZONE) / (1f - DEADZONE);
             float curved = (float) Math.pow(s, STEER_GAMMA);
             steer = sign * curved;
         }
 
-        // vitesse latérale cible
+
         float targetVx = steer * MAX_LATERAL_SPEED;
 
-        // convergence exponentielle vers la cible (réactivité réglée par STEER_RESP)
-        float k = 1f - (float) Math.exp(-STEER_RESP * dt); // 0..1
+        float k = 1f - (float) Math.exp(-STEER_RESP * dt);
         dotVx += (targetVx - dotVx) * k;
 
-        // intégration position
         dotX += dotVx * dt;
 
-        // limiter aux bords d'écran
         float half = (skinBitmap != null ? skinW / 2f : dotR);
         float minX = half;
         float maxX = Math.max(minX, getWidth() - half);
         if (dotX < minX) { dotX = minX; dotVx = 0f; }
         if (dotX > maxX) { dotX = maxX; dotVx = 0f; }
-
-        // déplacer/clean obstacles
         updateObstacles(dt);
         updateDots(dt);
 
-
-        // collisions : bords et obstacles
         checkBorderCollision();
         checkObstacleCollision();
 
-
-        // Activation bouclier au son si jauge pleine
         if (!shieldActive && powerFill >= 1f) {
-            long nowMs = SystemClock.uptimeMillis(); // différent de 'now' en ns
+            long nowMs = SystemClock.uptimeMillis();
             if (micLevel >= MIC_TRIGGER_LEVEL && (nowMs - lastMicTriggerMs) >= MIC_COOLDOWN_MS) {
                 activateShield();
                 lastMicTriggerMs = nowMs;
@@ -653,7 +613,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
             Iterator<Obstacle> it = obstacles.iterator();
             while (it.hasNext()) {
                 Obstacle ob = it.next();
-                ob.y += trackSpeed * dt; // descend à la vitesse de la route
+                ob.y += trackSpeed * dt;
                 if (ob.y > h + ob.s) it.remove();
             }
         }
@@ -662,7 +622,6 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
     private void updateDots(float dt) {
         final int h = getHeight();
 
-        // Move
         synchronized (dots) {
             Iterator<Dot> it = dots.iterator();
             while (it.hasNext()) {
@@ -672,7 +631,6 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
             }
         }
 
-        // Collision collecte avec la voiture
         float carLeft, carTop, carRight, carBottom;
         if (skinBitmap != null) {
             carLeft = dotX - skinW / 2f; carRight = dotX + skinW / 2f;
@@ -689,10 +647,8 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
                 Dot d = it.next();
                 float dx = Math.max(0, Math.max(carLeft - d.x, d.x - carRight));
                 float dy = Math.max(0, Math.max(carTop  - d.y, d.y - carBottom));
-                // test AABB-point avec tolérance
                 if (dx == 0 && dy == 0) { it.remove(); collected = true; }
                 else {
-                    // cercle voiture approximatif pour être plus “facile”
                     float cx = dotX, cy = dotY;
                     float rr = (skinBitmap != null ? Math.min(skinW, skinH) * 0.35f : dotR);
                     float ddx = d.x - cx, ddy = d.y - cy;
@@ -709,7 +665,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
         if (gameOver) return;
 
         final long nowMs = SystemClock.uptimeMillis();
-        if (nowMs < borderGraceUntilMs) return; // période de grâce active
+        if (nowMs < borderGraceUntilMs) return;
 
         int w = getWidth();
         float cx = w * 0.5f;
@@ -728,24 +684,18 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
         if (!(hitLeft || hitRight)) return;
 
         if (shieldActive) {
-            // Consomme bouclier + grâce temporaire pour éviter la mort instantanée
             shieldActive = false;
             powerFill = 0f;
             borderGraceUntilMs = nowMs + BORDER_GRACE_MS;
 
-            // Dégagement à l'intérieur + impulsion opposée au mur
             float pushInside = Math.max(half * 0.8f, roadWidth * 0.08f);
             if (hitLeft) {
                 dotX = left + margin + half + pushInside;
-                // Impulsion vers la droite si on glissait vers le mur
                 dotVx = Math.max(dotVx, 480f);
             } else {
                 dotX = right - margin - half - pushInside;
-                // Impulsion vers la gauche si on glissait vers le mur
                 dotVx = Math.min(dotVx, -480f);
             }
-
-            // Si la route est très étroite, recentre au besoin
             float minX = left + margin + half;
             float maxX = right - margin - half;
             if (dotX < minX) dotX = minX;
@@ -754,7 +704,6 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
             return;
         }
 
-        // Pas de bouclier: défaite
         triggerDefeat();
     }
 
@@ -788,12 +737,10 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
                         carBottom < obTop || carTop > obBottom);
                 if (intersects) {
                     if (shieldActive) {
-                        // Consomme le bouclier et détruit l’obstacle
                         shieldActive = false;
                         powerFill = 0f;
                         synchronized (obstacles) { obstacles.remove(ob); }
-                        // petit “knockback” visuel optionnel (facultatif)
-                        // dotVx *= 0.6f;
+
                     } else {
                         triggerDefeat();
                     }
@@ -820,7 +767,6 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
             if (gameMode == GameMode.ENDLESS) {
                 int meters = Math.max(0, Math.round(distancePx / PIXELS_PER_METER));
 
-                // NEW: sauvegarde du meilleur score
                 int best = prefs.getInt("best_endless", 0);
                 if (meters > best) {
                     prefs.edit().putInt("best_endless", meters).apply();
@@ -834,18 +780,16 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
     }
 
 
-    // ================= Capteurs =================
+    // Capteurs
     @Override
     public void onSensorChanged(SensorEvent event) {
         if (event.sensor.getType() != Sensor.TYPE_ACCELEROMETER) return;
 
-        float rawAx = -event.values[0]; // droite => +X
+        float rawAx = -event.values[0];
         float gAx = rawAx / 9.81f;
 
-        // low-pass (tilt lissé)
         tiltAccelX = LPF_ALPHA * gAx + (1f - LPF_ALPHA) * tiltAccelX;
 
-        // high-pass (jerk) — optionnel ici
         float hp = gAx - lastRawAxG;
         jerkG = 0.85f * (jerkG + hp);
         lastRawAxG = gAx;
@@ -853,7 +797,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
 
     @Override public void onAccuracyChanged(Sensor sensor, int accuracy) { }
 
-    // ================= Skins =================
+    // Skins
     private void buildSkinBitmap() {
         if (skinBitmap != null && !skinBitmap.isRecycled()) {
             skinBitmap.recycle();
@@ -870,7 +814,6 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
 
     private void startMicIfAllowed() {
         if (micRunning) return;
-        // Permission déjà demandée sur l'accueil. Si absente, on ignore.
         if (ContextCompat.checkSelfPermission(getContext(), Manifest.permission.RECORD_AUDIO)
                 != PackageManager.PERMISSION_GRANTED) {
             return;
@@ -910,17 +853,16 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
         while (micRunning && micRec != null) {
             int n = micRec.read(buf, 0, buf.length);
             if (n > 0) {
-                // RMS 16-bit -> [0..1]
                 double sum = 0;
                 for (int i = 0; i < n; i++) {
                     double s = buf[i] / 32768.0;
                     sum += s * s;
                 }
-                double rms = Math.sqrt(sum / n);            // linéaire
-                double vLog = Math.min(1.0, Math.log10(1 + 9 * rms)); // mapping log simple
+                double rms = Math.sqrt(sum / n);
+                double vLog = Math.min(1.0, Math.log10(1 + 9 * rms));
                 float target = (float) vLog;
 
-                // lissage attack/release
+
                 if (target > micLevel) {
                     micLevel += MIC_ATTACK * (target - micLevel);
                 } else {

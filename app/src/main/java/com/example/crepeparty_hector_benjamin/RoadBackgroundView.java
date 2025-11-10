@@ -15,9 +15,9 @@ public class RoadBackgroundView extends SurfaceView implements SurfaceHolder.Cal
 
     // Défilement
     private float trackOffsetY = 0f;
-    private float trackSpeed   = 320f;  // px/s
-    private float speedGain    = 12f;   // px/s²
-    private float trackMax     = 900f;  // px/s
+    private float trackSpeed   = 320f;
+    private float speedGain    = 12f;
+    private float trackMax     = 900f;
     private float roadWidth    = 0f;
     private float laneDash     = 28f;
 
@@ -49,14 +49,12 @@ public class RoadBackgroundView extends SurfaceView implements SurfaceHolder.Cal
 
     @Override public void run() {
         long last = System.nanoTime();
-        final long TARGET = 16_666_667L; // ~60 FPS
+        final long TARGET = 16_666_667L;
         while (running) {
             long now = System.nanoTime();
             float dt = (now - last) / 1_000_000_000f;
             last = now;
             if (dt > 0.05f) dt = 0.05f;
-
-            // accélération douce
             trackSpeed = Math.min(trackMax, trackSpeed + speedGain * dt);
             trackOffsetY += trackSpeed * dt;
 
@@ -89,7 +87,7 @@ public class RoadBackgroundView extends SurfaceView implements SurfaceHolder.Cal
 
         Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
 
-        // route en bandes
+        // route bandes
         p.setColor(Color.rgb(85, 85, 85));
         float bandH = 24f;
         for (float y = 0; y < h + bandH; y += bandH) {

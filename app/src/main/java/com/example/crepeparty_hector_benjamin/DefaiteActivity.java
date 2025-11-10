@@ -24,16 +24,15 @@ public class DefaiteActivity extends AppCompatActivity {
 
         try { message.setTypeface(ResourcesCompat.getFont(this, R.font.pixel)); } catch (Exception ignored) {}
 
-        String mode = getIntent().getStringExtra("mode"); // "TIMER" ou "ENDLESS"
+        String mode = getIntent().getStringExtra("mode"); // "Chrono" ou "Infini"
         int meters = getIntent().getIntExtra("score_meters", -1);
 
         if ("ENDLESS".equals(mode) && meters >= 0) {
             message.setText("Vous avez perdu\nDistance : " + meters + " m");
 
-            // NEW: afficher le meilleur score en mode infini
             SharedPreferences prefs = getSharedPreferences("crepe_prefs", MODE_PRIVATE);
             int best = prefs.getInt("best_endless", 0);
-            if (meters > best) { // sécurité si GameView ne l’a pas encore stocké
+            if (meters > best) {
                 best = meters;
                 prefs.edit().putInt("best_endless", best).apply();
             }

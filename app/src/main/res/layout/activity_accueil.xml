@@ -15,7 +15,7 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"/>
 
-    <!-- Compteur en haut (optionnel) -->
+    <!-- Compteur en haut -->
     <TextView
         android:id="@+id/textCompteur"
         android:layout_width="wrap_content"
@@ -82,9 +82,6 @@
             android:layout_marginTop="8dp"
             android:paddingStart="12dp"
             android:paddingEnd="12dp" />
-
-
-
 
         <LinearLayout
             android:layout_width="wrap_content"

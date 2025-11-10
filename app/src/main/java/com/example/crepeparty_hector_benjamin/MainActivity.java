@@ -1,4 +1,3 @@
-// MainActivity.java
 package com.example.crepeparty_hector_benjamin;
 
 import android.os.Bundle;
@@ -24,7 +23,6 @@ public class MainActivity extends AppCompatActivity {
 
         GameView gv = findViewById(R.id.gameView);
 
-        // Extra envoyé par l’accueil: "mode" = "TIMER" ou "ENDLESS"
         String mode = getIntent().getStringExtra("mode");
         if ("ENDLESS".equals(mode)) {
             gv.setGameMode(GameView.GameMode.ENDLESS);

@@ -14,7 +14,7 @@ public class StaticRoadView extends View {
     private final Paint pLane   = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     private float roadWidth = 0f;
-    private float laneDash  = 28f; // même taille que le jeu
+    private float laneDash  = 28f;
 
     public StaticRoadView(Context c) { super(c); init(); }
     public StaticRoadView(Context c, AttributeSet a) { super(c, a); init(); }
@@ -27,7 +27,6 @@ public class StaticRoadView extends View {
         pLane.setColor(Color.YELLOW);
         pLane.setStrokeWidth(8f);
 
-        // AA inutile pour ces traits
         pRoad.setAntiAlias(false);
         pBorder.setAntiAlias(false);
         pLane.setAntiAlias(false);
@@ -44,7 +43,7 @@ public class StaticRoadView extends View {
         // herbe
         canvas.drawColor(Color.rgb(34, 139, 34));
 
-        // route en bandes
+        // route avec bandes
         float cx = w * 0.5f;
         float left  = cx - roadWidth / 2f;
         float right = cx + roadWidth / 2f;
@@ -65,7 +64,7 @@ public class StaticRoadView extends View {
             prevY = y; prevL = l; prevR = r;
         }
 
-        // ligne centrale pointillée (phase fixe, donc immobile)
+        // ligne centrale pointillée
         float dash = laneDash, gap = laneDash;
         for (float y = 0; y < h; y += dash + gap) {
             canvas.drawLine(cx, y, cx, y + dash, pLane);

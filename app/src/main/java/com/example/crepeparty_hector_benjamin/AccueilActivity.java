@@ -39,14 +39,24 @@ public class AccueilActivity extends AppCompatActivity {
             R.drawable.car_10
     };
 
-    private static final int REQ_REC_AUDIO = 1001;
+    private static final int REQ_REC_AUDIO = 2001;
     private MicVisualizerView micViz;
 
-
+    private void ensureMicAndStart() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+                != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this,
+                    new String[]{Manifest.permission.RECORD_AUDIO}, REQ_REC_AUDIO);
+        } else {
+            if (micViz != null) micViz.start();
+        }
+    }
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_accueil);
+
+        ensureMicAndStart();
 
         micViz = findViewById(R.id.micViz);
         compteur = findViewById(R.id.textCompteur);
@@ -58,7 +68,6 @@ public class AccueilActivity extends AppCompatActivity {
         actualiserCompteur();
         actualiserVignetteSkin();
 
-        // NEW: afficher le meilleur score ENDLESS
         SharedPreferences prefs = getSharedPreferences("crepe_prefs", Context.MODE_PRIVATE);
         int best = prefs.getInt("best_endless", 0);
         TextView tvBest = findViewById(R.id.textBestEndless);
@@ -81,15 +90,16 @@ public class AccueilActivity extends AppCompatActivity {
         skinBtn.setOnClickListener(v -> ouvrirSkinDialog());
     }
 
-    // Option recommandé pour rafraîchir après une partie
     @Override
     protected void onResume() {
         super.onResume();
+        ensureMicAndStart();
         SharedPreferences prefs = getSharedPreferences("crepe_prefs", Context.MODE_PRIVATE);
         int best = prefs.getInt("best_endless", 0);
         TextView tvBest = findViewById(R.id.textBestEndless);
         if (tvBest != null) {
             tvBest.setText("Meilleur score en mode infini : " + best + " m");
+
         }
     }
 
@@ -114,16 +124,7 @@ public class AccueilActivity extends AppCompatActivity {
         skinCourantImg.setImageResource(sel);
     }
 
-    private void ensureMic() {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
-                != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this,
-                    new String[]{Manifest.permission.RECORD_AUDIO},
-                    REQ_REC_AUDIO);
-        } else {
-            if (micViz != null) micViz.start();
-        }
-    }
+  
 
     private void ouvrirSkinDialog() {
         View content = LayoutInflater.from(this).inflate(R.layout.dialog_choose_skin, null, false);

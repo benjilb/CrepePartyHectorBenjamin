@@ -22,19 +22,15 @@ public class VictoireActivity extends AppCompatActivity {
         ImageView imgCar = findViewById(R.id.imgCar);
         ImageView imgCup = findViewById(R.id.imgCup);
 
-        // Texte exact demandé + police pixel
         message.setText("Vous avez gagnez felicitations !");
         try {
-            Typeface pixel = getResources().getFont(R.font.pixel); // res/font/pixel.ttf
+            Typeface pixel = getResources().getFont(R.font.pixel);
             message.setTypeface(pixel);
-        } catch (Exception ignored) { /* si police absente, fallback sans crash */ }
+        } catch (Exception ignored) {}
 
-        // Afficher la voiture sélectionnée par l'utilisateur
         SharedPreferences prefs = getSharedPreferences("crepe_prefs", MODE_PRIVATE);
         int carResId = prefs.getInt("selected_skin_res", R.drawable.car_01);
         imgCar.setImageResource(carResId);
-
-        // Coupe déjà en XML via @drawable/cup
 
         retourBtn.setOnClickListener(v -> {
             Intent intent = new Intent(VictoireActivity.this, AccueilActivity.class);

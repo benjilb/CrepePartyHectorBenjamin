@@ -1,6 +1,8 @@
 package com.example.crepeparty_hector_benjamin;
 
+import android.Manifest;
 import android.content.Context;
+import android.content.pm.PackageManager;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -9,6 +11,8 @@ import android.media.AudioRecord;
 import android.media.MediaRecorder;
 import android.util.AttributeSet;
 import android.view.View;
+
+import androidx.core.content.ContextCompat;
 
 public class MicVisualizerView extends View implements Runnable {
 
@@ -20,7 +24,7 @@ public class MicVisualizerView extends View implements Runnable {
 
     private AudioRecord recorder;
     private int bufSize;
-    private float level = 0f;         // 0..1
+    private float level = 0f;
     private float smooth = 0f;
 
     public MicVisualizerView(Context c) { super(c); init(); }
@@ -32,9 +36,19 @@ public class MicVisualizerView extends View implements Runnable {
         fg.setColor(Color.GREEN);
     }
 
+    /** Vérifie RECORD_AUDIO */
+    private boolean hasMicPermission() {
+        return ContextCompat.checkSelfPermission(getContext(), Manifest.permission.RECORD_AUDIO)
+                == PackageManager.PERMISSION_GRANTED;
+    }
+
     /** Lance la capture si permission accordée */
     public void start() {
         if (running) return;
+        if (!hasMicPermission()) {
+            return;
+        }
+
         final int sr = 44100;
         bufSize = Math.max(
                 AudioRecord.getMinBufferSize(sr, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT),
@@ -48,12 +62,17 @@ public class MicVisualizerView extends View implements Runnable {
                     AudioFormat.ENCODING_PCM_16BIT,
                     bufSize
             );
-            recorder.startRecording();
+            try {
+                recorder.startRecording();
+            } catch (SecurityException se) {
+                stop();
+                return;
+            }
             running = true;
             thread = new Thread(this, "MicViz");
             thread.start();
         } catch (Exception e) {
-            stop(); // nettoyage si erreur
+            stop();
         }
     }
 
@@ -76,19 +95,16 @@ public class MicVisualizerView extends View implements Runnable {
         while (running && recorder != null) {
             int n = recorder.read(buf, 0, buf.length);
             if (n > 0) {
-                // RMS -> 0..1 approx
                 double sum = 0.0;
                 for (int i = 0; i < n; i++) {
                     double s = buf[i] / 32768.0;
                     sum += s * s;
                 }
-                double rms = Math.sqrt(sum / n);      // 0..~1
-                // mapping log léger
-                double v = Math.min(1.0, Math.log10(1 + 9 * rms) / Math.log10(10));
+                double rms = Math.sqrt(sum / n);
+                double v = Math.min(1.0, Math.log10(1 + 9 * rms));
                 level = (float) v;
 
-                // lissage visuel
-                float alpha = 0.25f;                 // plus petit = plus lissé
+                float alpha = 0.25f;
                 smooth = smooth + alpha * (level - smooth);
                 postInvalidateOnAnimation();
             }
@@ -100,17 +116,14 @@ public class MicVisualizerView extends View implements Runnable {
         int w = getWidth();
         int h = getHeight();
 
-        // fond
         c.drawRect(0, 0, w, h, bg);
 
-        // cadre
         Paint frame = new Paint();
         frame.setStyle(Paint.Style.STROKE);
         frame.setColor(Color.WHITE);
         frame.setStrokeWidth(2f);
         c.drawRect(1, 1, w - 1, h - 1, frame);
 
-        // barre amplitude
         int pad = 4;
         float frac = Math.max(0f, Math.min(1f, smooth));
         float ww = (w - pad * 2) * frac;
