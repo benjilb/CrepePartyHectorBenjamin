@@ -22,7 +22,7 @@ public class VictoireActivity extends AppCompatActivity {
         ImageView imgCar = findViewById(R.id.imgCar);
         ImageView imgCup = findViewById(R.id.imgCup);
 
-        message.setText("Vous avez gagnez felicitations !");
+        message.setText("Vous avez gagné felicitations !");
         try {
             Typeface pixel = getResources().getFont(R.font.pixel);
             message.setTypeface(pixel);
