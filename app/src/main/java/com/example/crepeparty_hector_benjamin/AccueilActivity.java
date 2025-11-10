@@ -49,14 +49,25 @@ public class AccueilActivity extends AppCompatActivity {
         micViz = findViewById(R.id.micViz);
         compteur = findViewById(R.id.textCompteur);
         skinCourantImg = findViewById(R.id.imageSkinCourant);
-        Button jouerBtn = findViewById(R.id.buttonJouer);
+        Button jouerBtn = findViewById(R.id.buttonJouerChrono);
+        Button jouerEndlessBtn   = findViewById(R.id.buttonJouerEndless); // nouveau
+
         Button skinBtn  = findViewById(R.id.buttonChoisirSkin);
 
         actualiserCompteur();
         actualiserVignetteSkin();
 
-        jouerBtn.setOnClickListener(v ->
-                startActivity(new Intent(this, MainActivity.class)));
+        jouerBtn.setOnClickListener(v -> {
+            Intent i = new Intent(this, MainActivity.class);
+            i.putExtra("mode", "TIMER");
+            startActivity(i);
+        });
+
+        jouerEndlessBtn.setOnClickListener(v -> {
+            Intent i = new Intent(this, MainActivity.class);
+            i.putExtra("mode", "ENDLESS");
+            startActivity(i);
+        });
 
         skinBtn.setOnClickListener(v -> ouvrirSkinDialog());
     }

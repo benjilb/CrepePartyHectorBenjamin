@@ -40,12 +40,38 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
-        <Button
-            android:id="@+id/buttonJouer"
+        <!-- Jouer mode chrono -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/buttonJouerChrono"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Jouer"
-            android:layout_marginBottom="16dp"/>
+            android:text="Jouer mode chrono"
+            app:icon="@drawable/chronometre"
+            app:iconGravity="textStart"
+            app:iconPadding="8dp"
+            app:iconSize="24dp"
+            app:iconTint="@null"
+            android:layout_marginBottom="16dp"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp" />
+
+        <!-- Jouer mode infini -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/buttonJouerEndless"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Jouer mode infini"
+            app:icon="@drawable/infini"
+            app:iconGravity="textStart"
+            app:iconPadding="8dp"
+            app:iconSize="24dp"
+            app:iconTint="@null"
+            android:layout_marginTop="8dp"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp" />
+
+
+
 
         <LinearLayout
             android:layout_width="wrap_content"
@@ -68,15 +94,37 @@
                 android:scaleType="fitCenter"/>
         </LinearLayout>
 
+
+
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/micProbe"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:padding="6dp"
+        android:background="#55000000"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="32dp">
+
+        <ImageView
+            android:id="@+id/iconMic"
+            android:layout_width="18dp"
+            android:layout_height="18dp"
+            android:src="@drawable/ic_mic"
+            android:contentDescription="@null"
+            android:importantForAccessibility="no"
+            android:layout_marginEnd="8dp"
+            app:tint="@android:color/white" />
+
         <com.example.crepeparty_hector_benjamin.MicVisualizerView
             android:id="@+id/micViz"
-            android:layout_width="240dp"
-            android:layout_height="28dp"
-            app:layout_constraintTop_toBottomOf="@id/textCompteur"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            android:layout_marginTop="12dp"/>
-
+            android:layout_width="140dp"
+            android:layout_height="18dp"/>
     </LinearLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>
