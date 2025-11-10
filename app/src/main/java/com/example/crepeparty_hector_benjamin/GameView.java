@@ -434,8 +434,9 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
         lane.setColor(Color.YELLOW);
         lane.setStrokeWidth(8f);
         float dash = laneDash, gap = laneDash;
-        float phase = (trackOffsetY % (dash + gap));
-        for (float y = -phase; y < h; y += dash + gap) {
+        float period = dash + gap;
+        float phase  = trackOffsetY % period;
+        for (float y = phase; y < h + dash; y += period) {
             float cx = w * 0.5f;
             canvas.drawLine(cx, y, cx, y + dash, lane);
         }
