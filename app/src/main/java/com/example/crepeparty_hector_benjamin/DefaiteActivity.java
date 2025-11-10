@@ -19,18 +19,34 @@ public class DefaiteActivity extends AppCompatActivity {
         Button rejouerBtn = findViewById(R.id.buttonRejouer);
         Button retourBtn  = findViewById(R.id.buttonRetour);
 
-        message.setText("Vous avez perdu");
-        message.setTypeface(ResourcesCompat.getFont(this, R.font.pixel));
+        // Police pixel si dispo
+        try {
+            message.setTypeface(ResourcesCompat.getFont(this, R.font.pixel));
+        } catch (Exception ignored) {}
 
+        // Texte centré avec distance si ENDLESS
+        String mode = getIntent().getStringExtra("mode"); // "TIMER" ou "ENDLESS"
+        int meters = getIntent().getIntExtra("score_meters", -1);
+        if ("ENDLESS".equals(mode) && meters >= 0) {
+            message.setText("Vous avez perdu\nDistance : " + meters + " m");
+        } else {
+            message.setText("Vous avez perdu");
+        }
+
+        // Rejouer dans le même mode qu'on vient de jouer
         rejouerBtn.setOnClickListener(v -> {
             Intent intent = new Intent(DefaiteActivity.this, MainActivity.class);
+            if ("ENDLESS".equals(mode)) {
+                intent.putExtra("mode", "ENDLESS");
+            } else {
+                intent.putExtra("mode", "TIMER");
+            }
             startActivity(intent);
             finish();
         });
 
         retourBtn.setOnClickListener(v -> {
-            Intent intent = new Intent(DefaiteActivity.this, AccueilActivity.class);
-            startActivity(intent);
+            startActivity(new Intent(DefaiteActivity.this, AccueilActivity.class));
             finish();
         });
     }
