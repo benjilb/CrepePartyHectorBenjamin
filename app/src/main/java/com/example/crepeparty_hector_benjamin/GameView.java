@@ -27,6 +27,8 @@ import android.content.pm.PackageManager;
 import android.Manifest;
 import androidx.core.content.ContextCompat;
 import android.os.SystemClock;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 
 
 import androidx.annotation.DrawableRes;
@@ -38,6 +40,14 @@ import java.util.List;
 import java.util.Random;
 
 public class GameView extends SurfaceView implements SurfaceHolder.Callback, SensorEventListener {
+
+    public enum GameMode { TIMER, ENDLESS }
+    private GameMode gameMode = GameMode.TIMER;
+
+    public void setGameMode(GameMode mode) { this.gameMode = mode; }
+
+    private float distancePx = 0f;
+    private static final float PIXELS_PER_METER = 60f; // 60 px = 1 m
 
     // ---------------- Core & état ----------------
     private GameThread thread;
@@ -58,6 +68,8 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
     private static final float STEER_RESP = 18f;      // avant 10
     private static final float TILT_SENS = 1.3f;      // avant 1.0
     private static final float STEER_GAMMA = 1.3f;    // avant 1.8 -> plus linéaire
+
+
 
     // (gardées si tu veux réutiliser ailleurs)
     private float lastRawAxG = 0f;
@@ -163,6 +175,8 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
     private static final float HUD_BAR_W = 220f;
     private static final float HUD_BAR_H = 18f;
     private static final float HUD_BAR_PAD = 12f;
+    private int sysBottomInsetPx = 0;
+    private float hudExtraOffsetPx = 0f;
 
     private float powerFill = 0f;
     private boolean shieldActive = false;
@@ -249,6 +263,10 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
     public GameView(Context context, AttributeSet attrs, int defStyleAttr) { super(context, attrs, defStyleAttr); init(context); }
 
     // ------------------------------------------------------
+    private static float dp(Context c, float v){
+        return v * c.getResources().getDisplayMetrics().density;
+    }
+
     private void init(Context context) {
         getHolder().addCallback(this);
         setFocusable(true);
@@ -262,6 +280,13 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
         // Skin par défaut (ou dernier choisi)
         selectedSkinResId = prefs.getInt("selected_skin_res", R.drawable.car_01);
         buildSkinBitmap();
+
+
+        hudExtraOffsetPx = dp(context, 48);
+        ViewCompat.setOnApplyWindowInsetsListener(this, (v, insets) -> {
+            sysBottomInsetPx = insets.getInsets(WindowInsetsCompat.Type.systemBars()).bottom;
+            return insets;
+        });
     }
 
     // ================= Surface lifecycle =================
@@ -270,23 +295,29 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
         gamesPlayed += 1;
         prefs.edit().putInt("games_played", gamesPlayed).apply();
 
-        timer = new CountDownTimer(60_000L, 1000) {
-            @Override public void onTick(long millisUntilFinished) { timeLeft = millisUntilFinished; }
-            @Override public void onFinish() {
-                if (navigated) return;
-                navigated = true;
-                timeLeft = 0;
+        if (gameMode == GameMode.TIMER) {
+            timer = new CountDownTimer(60_000L, 1000) {
+                @Override public void onTick(long millisUntilFinished) { timeLeft = millisUntilFinished; }
+                @Override public void onFinish() {
+                    if (navigated) return;
+                    navigated = true;
+                    timeLeft = 0;
 
-                if (sensorManager != null) sensorManager.unregisterListener(GameView.this);
-                stopMic();
-                stopThread();
+                    if (sensorManager != null) sensorManager.unregisterListener(GameView.this);
+                    stopMic();
+                    stopThread();
 
-                ui.post(() -> {
-                    Intent intent = new Intent(getContext(), VictoireActivity.class);
-                    getContext().startActivity(intent);
-                });
-            }
-        }.start();
+                    ui.post(() -> {
+                        Intent intent = new Intent(getContext(), VictoireActivity.class);
+                        getContext().startActivity(intent);
+                    });
+                }
+            }.start();
+        } else {
+            // ENDLESS: pas de timer
+            timeLeft = 0L;
+        }
+
 
         int w0 = getWidth();
         int h0 = getHeight();
@@ -482,13 +513,22 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
         p.setColor(Color.BLACK);
         p.setTextSize(36f);
         canvas.drawText("Parties: " + gamesPlayed, 16, 48, p);
-        String timeText = "Temps: " + (timeLeft / 1000) + "s";
-        float tw = p.measureText(timeText);
-        canvas.drawText(timeText, w - tw - 16, 48, p);
+
+        String rightText;
+        if (gameMode == GameMode.TIMER) {
+            rightText = "Temps: " + (timeLeft / 1000) + "s";
+        } else {
+            int meters = Math.max(0, Math.round(distancePx / PIXELS_PER_METER));
+            rightText = "Distance: " + meters + " m";
+        }
+        float tw = p.measureText(rightText);
+        canvas.drawText(rightText, w - tw - 16, 48, p);
+
 
 
         // ---- HUD power bar (bas-gauche)
-        float bx = HUD_BAR_PAD, by = getHeight() - HUD_BAR_PAD - HUD_BAR_H;
+        float bx = HUD_BAR_PAD;
+        float by = getHeight() - HUD_BAR_PAD - HUD_BAR_H - sysBottomInsetPx - hudExtraOffsetPx;
         Paint hudFrame = new Paint(Paint.ANTI_ALIAS_FLAG);
         hudFrame.setStyle(Paint.Style.STROKE);
         hudFrame.setStrokeWidth(3f);
@@ -547,6 +587,9 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
         // défilement route qui accélère
         trackSpeed = Math.min(trackMax, trackSpeed + speedGain * dt);
         trackOffsetY += trackSpeed * dt;
+
+        distancePx += trackSpeed * dt; // px parcourus par la route
+
 
         // ---- contrôle latéral type "voiture arcade" ----
         // deadzone + courbe non-linéaire pour être doux près du 0 et nerveux plus loin
@@ -765,15 +808,19 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
 
         if (timer != null) timer.cancel();
         if (sensorManager != null) sensorManager.unregisterListener(this);
-
-
         stopMic();
-
         handler.removeCallbacks(obstacleSpawner);
         if (thread != null) thread.setRunning(false);
 
         ui.post(() -> {
             Intent intent = new Intent(getContext(), DefaiteActivity.class);
+            // score si ENDLESS
+            if (gameMode == GameMode.ENDLESS) {
+                int meters = Math.max(0, Math.round(distancePx / PIXELS_PER_METER));
+                intent.putExtra("score_meters", meters);
+            }
+            // toujours passer le mode
+            intent.putExtra("mode", gameMode.name());
             getContext().startActivity(intent);
         });
     }

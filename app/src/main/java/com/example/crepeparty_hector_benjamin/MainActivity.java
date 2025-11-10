@@ -20,12 +20,18 @@ public class MainActivity extends AppCompatActivity {
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
                 WindowManager.LayoutParams.FLAG_FULLSCREEN);
         EdgeToEdge.enable(this);
-
         setContentView(R.layout.activity_main);
 
         GameView gv = findViewById(R.id.gameView);
 
-        // Optionnel : insets
+        // Extra envoyé par l’accueil: "mode" = "TIMER" ou "ENDLESS"
+        String mode = getIntent().getStringExtra("mode");
+        if ("ENDLESS".equals(mode)) {
+            gv.setGameMode(GameView.GameMode.ENDLESS);
+        } else {
+            gv.setGameMode(GameView.GameMode.TIMER);
+        }
+
         ViewCompat.setOnApplyWindowInsetsListener(gv, (view, insets) -> {
             Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
             view.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
