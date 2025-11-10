@@ -1,5 +1,6 @@
 package com.example.crepeparty_hector_benjamin;
 
+import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
@@ -46,16 +47,24 @@ public class AccueilActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_accueil);
+
         micViz = findViewById(R.id.micViz);
         compteur = findViewById(R.id.textCompteur);
         skinCourantImg = findViewById(R.id.imageSkinCourant);
         Button jouerBtn = findViewById(R.id.buttonJouerChrono);
-        Button jouerEndlessBtn   = findViewById(R.id.buttonJouerEndless); // nouveau
-
-        Button skinBtn  = findViewById(R.id.buttonChoisirSkin);
+        Button jouerEndlessBtn = findViewById(R.id.buttonJouerEndless);
+        Button skinBtn = findViewById(R.id.buttonChoisirSkin);
 
         actualiserCompteur();
         actualiserVignetteSkin();
+
+        // NEW: afficher le meilleur score ENDLESS
+        SharedPreferences prefs = getSharedPreferences("crepe_prefs", Context.MODE_PRIVATE);
+        int best = prefs.getInt("best_endless", 0);
+        TextView tvBest = findViewById(R.id.textBestEndless);
+        if (tvBest != null) {
+            tvBest.setText("Meilleur score en mode infini : " + best + " m");
+        }
 
         jouerBtn.setOnClickListener(v -> {
             Intent i = new Intent(this, MainActivity.class);
@@ -72,13 +81,19 @@ public class AccueilActivity extends AppCompatActivity {
         skinBtn.setOnClickListener(v -> ouvrirSkinDialog());
     }
 
+    // Option recommandé pour rafraîchir après une partie
     @Override
     protected void onResume() {
         super.onResume();
-        actualiserCompteur();
-        actualiserVignetteSkin();
-        ensureMic();
+        SharedPreferences prefs = getSharedPreferences("crepe_prefs", Context.MODE_PRIVATE);
+        int best = prefs.getInt("best_endless", 0);
+        TextView tvBest = findViewById(R.id.textBestEndless);
+        if (tvBest != null) {
+            tvBest.setText("Meilleur score en mode infini : " + best + " m");
+        }
     }
+
+
 
     @Override
     protected void onPause() {

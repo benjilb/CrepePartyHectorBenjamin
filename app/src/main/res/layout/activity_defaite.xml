@@ -33,6 +33,22 @@
         app:layout_constraintEnd_toEndOf="parent"/>
 
 
+    <TextView
+        android:id="@+id/textBestEndlessDefaite"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="Meilleur score en mode infini : 0 m"
+        android:textSize="18sp"
+        android:textColor="@android:color/white"
+        android:fontFamily="@font/pixel"
+        android:paddingTop="8dp"
+        android:gravity="center"
+        android:textAlignment="center"
+        android:visibility="gone"
+        app:layout_constraintTop_toBottomOf="@id/textDefaite"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"/>
+
     <!-- Voiture accidentée au milieu vers le bas -->
     <ImageView
         android:id="@+id/imageloosecar"

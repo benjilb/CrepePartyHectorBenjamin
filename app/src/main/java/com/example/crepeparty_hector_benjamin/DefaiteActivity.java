@@ -7,6 +7,8 @@ import android.widget.TextView;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.res.ResourcesCompat;
+import android.content.SharedPreferences;
+import android.view.View;
 
 public class DefaiteActivity extends AppCompatActivity {
 
@@ -16,31 +18,35 @@ public class DefaiteActivity extends AppCompatActivity {
         setContentView(R.layout.activity_defaite);
 
         TextView message = findViewById(R.id.textDefaite);
+        TextView tvBest  = findViewById(R.id.textBestEndlessDefaite);
         Button rejouerBtn = findViewById(R.id.buttonRejouer);
         Button retourBtn  = findViewById(R.id.buttonRetour);
 
-        // Police pixel si dispo
-        try {
-            message.setTypeface(ResourcesCompat.getFont(this, R.font.pixel));
-        } catch (Exception ignored) {}
+        try { message.setTypeface(ResourcesCompat.getFont(this, R.font.pixel)); } catch (Exception ignored) {}
 
-        // Texte centré avec distance si ENDLESS
         String mode = getIntent().getStringExtra("mode"); // "TIMER" ou "ENDLESS"
         int meters = getIntent().getIntExtra("score_meters", -1);
+
         if ("ENDLESS".equals(mode) && meters >= 0) {
             message.setText("Vous avez perdu\nDistance : " + meters + " m");
+
+            // NEW: afficher le meilleur score en mode infini
+            SharedPreferences prefs = getSharedPreferences("crepe_prefs", MODE_PRIVATE);
+            int best = prefs.getInt("best_endless", 0);
+            if (meters > best) { // sécurité si GameView ne l’a pas encore stocké
+                best = meters;
+                prefs.edit().putInt("best_endless", best).apply();
+            }
+            tvBest.setText("Meilleur score en mode infini : " + best + " m");
+            tvBest.setVisibility(View.VISIBLE);
         } else {
             message.setText("Vous avez perdu");
+            tvBest.setVisibility(View.GONE);
         }
 
-        // Rejouer dans le même mode qu'on vient de jouer
         rejouerBtn.setOnClickListener(v -> {
             Intent intent = new Intent(DefaiteActivity.this, MainActivity.class);
-            if ("ENDLESS".equals(mode)) {
-                intent.putExtra("mode", "ENDLESS");
-            } else {
-                intent.putExtra("mode", "TIMER");
-            }
+            intent.putExtra("mode", "ENDLESS".equals(mode) ? "ENDLESS" : "TIMER");
             startActivity(intent);
             finish();
         });

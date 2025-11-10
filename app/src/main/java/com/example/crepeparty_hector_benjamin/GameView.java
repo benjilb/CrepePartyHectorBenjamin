@@ -585,9 +585,12 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
         if (dt > 0.05f) dt = 0.05f;
 
         // défilement route qui accélère
-        trackSpeed = Math.min(trackMax, trackSpeed + speedGain * dt);
+        if (gameMode == GameMode.ENDLESS) {
+            trackSpeed += speedGain * dt;      // sans plafond
+        } else {
+            trackSpeed = Math.min(trackMax, trackSpeed + speedGain * dt);
+        }
         trackOffsetY += trackSpeed * dt;
-
         distancePx += trackSpeed * dt; // px parcourus par la route
 
 
@@ -814,16 +817,22 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Sen
 
         ui.post(() -> {
             Intent intent = new Intent(getContext(), DefaiteActivity.class);
-            // score si ENDLESS
             if (gameMode == GameMode.ENDLESS) {
                 int meters = Math.max(0, Math.round(distancePx / PIXELS_PER_METER));
+
+                // NEW: sauvegarde du meilleur score
+                int best = prefs.getInt("best_endless", 0);
+                if (meters > best) {
+                    prefs.edit().putInt("best_endless", meters).apply();
+                }
+
                 intent.putExtra("score_meters", meters);
             }
-            // toujours passer le mode
             intent.putExtra("mode", gameMode.name());
             getContext().startActivity(intent);
         });
     }
+
 
     // ================= Capteurs =================
     @Override
