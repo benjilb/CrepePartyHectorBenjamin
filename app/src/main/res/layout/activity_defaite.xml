@@ -18,17 +18,20 @@
     <!-- Message -->
     <TextView
         android:id="@+id/textDefaite"
-        android:layout_width="wrap_content"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:text="Vous avez perdu"
         android:textSize="22sp"
         android:textColor="@android:color/white"
         android:fontFamily="@font/pixel"
         android:padding="16dp"
+        android:gravity="center"
+        android:textAlignment="center"
         app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="24dp"/>
+        app:layout_constraintEnd_toEndOf="parent"/>
+
 
     <!-- Voiture accidentée au milieu vers le bas -->
     <ImageView
