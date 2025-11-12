@@ -119,8 +119,11 @@ public class RoadBackgroundView extends SurfaceView implements SurfaceHolder.Cal
         lane.setColor(Color.YELLOW);
         lane.setStrokeWidth(8f);
         float dash = laneDash, gap = laneDash;
-        float phase = (trackOffsetY % (dash + gap));
-        for (float y = -phase; y < h; y += dash + gap) {
+        float period = dash + gap;
+        float raw = (-trackOffsetY) % period;
+        if (raw < 0) raw += period;
+        float phase = raw;
+        for (float y = -phase; y < h; y += period) {
             float cx = w * 0.5f;
             canvas.drawLine(cx, y, cx, y + dash, lane);
         }
